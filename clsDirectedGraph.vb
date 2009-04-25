@@ -333,6 +333,21 @@ Namespace DirectedGraph
                 mdctSourceVertices.Remove(vNewEnd.VertexID)
             End If
         End Sub
+
+        ''' <summary>
+        ''' Gets all valid source->sink paths.
+        ''' </summary>
+        ''' <returns>A list of lists, where each list is a list of vertex ids, starting with the source, ending with the sink.</returns>
+        Public Function GetAllSourceSinkPaths() As List(Of List(Of Long))
+            Dim lstPaths As New List(Of List(Of Long))
+            Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
+
+            For Each lngSource As Long In mdctSourceVertices.Keys
+
+            Next
+
+            Return lstPaths
+        End Function
 #End Region
 
 #Region "Private Helpers"
