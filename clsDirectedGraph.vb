@@ -11,9 +11,11 @@ Namespace DirectedGraph
         Public Class clsDirectedGraphVertex(Of VertexPayload)
             Inherits clsGraph(Of GraphVertexPayload, GraphEdgePayload).clsVertex(Of VertexPayload)
 
+#Region "Constructors"
             Public Sub New(ByVal plngVertexID As Long, Optional ByRef pvpPayload As VertexPayload = Nothing)
                 MyBase.New(plngVertexID, pvpPayload)
             End Sub
+#End Region
         End Class
 #End Region
 
@@ -21,14 +23,14 @@ Namespace DirectedGraph
         Public Class clsDirectedGraphEdge(Of EdgePayload)
             Inherits clsGraph(Of GraphVertexPayload, GraphEdgePayload).clsEdge(Of EdgePayload)
 #Region "Member Vars"
-            Protected Friend mlngStartVertex As Long
+            Protected Friend mlngStartVertexID As Long
 #End Region
 
 #Region "Constructors"
             Protected Sub New(ByVal plngEdgeID As Long, ByVal plngStartVertexID As Long, ByVal plngEndVertexID As Long, Optional ByRef pepPayload As EdgePayload = Nothing)
                 MyBase.New(plngEdgeID, plngStartVertexID, plngEndVertexID, pepPayload)
 
-                mlngStartVertex = plngStartVertexID
+                mlngStartVertexID = plngStartVertexID
             End Sub
 #End Region
 
@@ -37,7 +39,7 @@ Namespace DirectedGraph
             ''' Reverses the direction of the edge
             ''' </summary>
             Public Sub ReverseDirection()
-                mlngStartVertex = CLng(IIf(mlngStartVertex = mlngVertexID1, mlngVertexID2, mlngVertexID1))
+                mlngStartVertexID = CLng(IIf(mlngStartVertexID = mlngVertexID1, mlngVertexID2, mlngVertexID1))
             End Sub
 
             ''' <summary>
@@ -45,7 +47,7 @@ Namespace DirectedGraph
             ''' </summary>
             ''' <returns>Start vertex ID.</returns>
             Public Function StartVertexID() As Long
-                Return mlngStartVertex
+                Return mlngStartVertexID
             End Function
 
             ''' <summary>
@@ -53,7 +55,7 @@ Namespace DirectedGraph
             ''' </summary>
             ''' <returns>End vertex ID.</returns>
             Public Function EndVertexID() As Long
-                Return CLng(IIf(mlngStartVertex = mlngVertexID1, mlngVertexID2, mlngVertexID1))
+                Return CLng(IIf(mlngStartVertexID = mlngVertexID1, mlngVertexID2, mlngVertexID1))
             End Function
 #End Region
         End Class
@@ -218,7 +220,7 @@ Namespace DirectedGraph
                                 Optional ByRef pvpVertexPayload As GraphVertexPayload = Nothing, _
                                 Optional ByRef pepEdgePayload As GraphEdgePayload = Nothing) As Long
             Dim lngNewVertexID As Long = MyBase.AddNewVertex(plngExistingVertexID, pvpVertexPayload, pepEdgePayload)
-            Dim vNew As clsDirectedGraphVertex(Of GraphVertexPayload) = CType(mdctVertices(lngNewVertexID), clsDirectedGraphVertex(Of GraphVertexPayload))
+            Dim vNew As clsDirectedGraphVertex(Of GraphVertexPayload) = GetVertex(lngNewVertexID)
 
             'This new vertex we've added should automatically be a sink: it can't
             'have any outgoing edges yet.
@@ -282,7 +284,7 @@ Namespace DirectedGraph
         Public Overrides Sub RemoveEdge(ByVal plngEdgeID As Long)
             If Not mdctEdges.ContainsKey(plngEdgeID) Then Throw New EdgeDoesntExistException(plngEdgeID)
 
-            Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload) = CType(mdctEdges(plngEdgeID), clsDirectedGraphEdge(Of GraphEdgePayload))
+            Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload) = GetEdge(plngEdgeID)
             Dim lngStartVertexID As Long = eCurr.StartVertexID
             Dim lngEndVertexID As Long = eCurr.EndVertexID
 
@@ -290,12 +292,12 @@ Namespace DirectedGraph
 
             'Check if start vertex is now a sink
             If VerifySink(lngStartVertexID) Then
-                mdctSinkVertices.Add(lngStartVertexID, CType(mdctVertices(lngStartVertexID), clsDirectedGraphVertex(Of GraphVertexPayload)))
+                mdctSinkVertices.Add(lngStartVertexID, GetVertex(lngStartVertexID))
             End If
 
             'Check if end vertex is now a source
             If VerifySource(lngEndVertexID) Then
-                mdctSourceVertices.Add(lngEndVertexID, CType(mdctVertices(lngEndVertexID), clsDirectedGraphVertex(Of GraphVertexPayload)))
+                mdctSourceVertices.Add(lngEndVertexID, GetVertex(lngEndVertexID))
             End If
         End Sub
 
@@ -310,9 +312,9 @@ Namespace DirectedGraph
             If Not mdctEdges.ContainsKey(plngEdgeID) Then Throw New EdgeDoesntExistException(plngEdgeID)
             If Not mdctVertices.ContainsKey(plngReplacementVertexID) Then Throw New VertexDoesntExistException(plngReplacementVertexID)
 
-            Dim eSwap As clsDirectedGraphEdge(Of GraphEdgePayload) = CType(mdctEdges(plngEdgeID), clsDirectedGraphEdge(Of GraphEdgePayload))
-            Dim vOldEnd As clsDirectedGraphVertex(Of GraphVertexPayload) = CType(mdctVertices(eSwap.EndVertexID), clsDirectedGraphVertex(Of GraphVertexPayload))
-            Dim vNewEnd As clsDirectedGraphVertex(Of GraphVertexPayload) = CType(mdctVertices(plngReplacementVertexID), clsDirectedGraphVertex(Of GraphVertexPayload))
+            Dim eSwap As clsDirectedGraphEdge(Of GraphEdgePayload) = GetEdge(plngEdgeID)
+            Dim vOldEnd As clsDirectedGraphVertex(Of GraphVertexPayload) = GetVertex(eSwap.EndVertexID)
+            Dim vNewEnd As clsDirectedGraphVertex(Of GraphVertexPayload) = GetVertex(plngReplacementVertexID)
 
             'Change the end vertex of the edge using the friend accessibility
             If eSwap.StartVertexID = eSwap.VertexID1 Then
@@ -335,18 +337,86 @@ Namespace DirectedGraph
         End Sub
 
         ''' <summary>
-        ''' Gets all valid source->sink paths.
+        ''' Gets all valid source->sink paths which do not contain loops.
         ''' </summary>
         ''' <returns>A list of lists, where each list is a list of vertex ids, starting with the source, ending with the sink.</returns>
-        Public Function GetAllSourceSinkPaths() As List(Of List(Of Long))
-            Dim lstPaths As New List(Of List(Of Long))
+        Public Function GetAllNonLoopingSourceSinkPaths() As List(Of List(Of Long))
+            Dim lstCompletePaths As New List(Of List(Of Long))
+            Dim lstWorkingPaths As New List(Of List(Of Long))
             Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
+            Dim lstOutgoingEdges As List(Of Long)
+            Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload)
 
+            Dim lstCurrentPath As List(Of Long)
+
+            'Investigate each path from each source node
             For Each lngSource As Long In mdctSourceVertices.Keys
+                'Create new current list, current vertex pair, using the 
+                'source vertex we has iterated to, add it to a fresh working paths list
+                lstCurrentPath = New List(Of Long)
+                lstCurrentPath.Add(lngSource)
+                lstWorkingPaths.Add(lstCurrentPath)
 
+                'Continue until each working path from this source has hit a sink 
+                '(we'll delete the paths that loop back to a previously visited vertex,
+                'and we'll also remove them from this list as they hit sinks and
+                'we move them to the complete paths list...so when this working
+                'list is empty, we're done with this source)
+                Do Until lstWorkingPaths.Count = 0
+                    'Use the first list in the list of working paths
+                    lstCurrentPath = lstWorkingPaths(0)
+                    vCurr = GetVertex(lstCurrentPath(0))
+
+                    If IsSink(vCurr.VertexID) Then
+                        'Add the current path to the 
+                        'complete paths list, and we're done with the current path,
+                        'so remove it from the working paths list
+                        lstCompletePaths.Add(lstCurrentPath)
+                        lstWorkingPaths.RemoveAt(0)
+                    Else
+                        'Paths out exist, need to loop all of them and create new working path copies
+                        'for the working paths list
+                        lstOutgoingEdges = GetOutgoingEdges(vCurr.VertexID)
+                        For Each lngEdgeID As Long In lstOutgoingEdges
+                            eCurr = GetEdge(lngEdgeID)
+                            vCurr = GetVertex(eCurr.EndVertexID)
+
+                            'Prevent looping: ensure next vertex is not already in list of vertices,
+                            'only continue along path if this is not the case
+                            If Not lstCurrentPath.Contains(vCurr.VertexID) Then
+                                lstCurrentPath = lstWorkingPaths(0) 'reset current path to first in working path
+                                lstCurrentPath.Add(vCurr.VertexID)
+
+                                'Add a copy of the current path, cloned from current path
+                                lstWorkingPaths.Add(New List(Of Long)(lstCurrentPath))
+                            End If
+                        Next
+                    End If
+                Loop
             Next
 
-            Return lstPaths
+            Return lstCompletePaths
+        End Function
+
+        ''' <summary>
+        ''' Gets the outgoing edges from a vertex.
+        ''' </summary>
+        ''' <exception cref="VertexDoesntExistException">For bad vertex IDs.</exception>
+        ''' <param name="plngVertexID">The vertex ID to investigate.</param>
+        ''' <returns>A list of outgoing edge IDs.</returns>
+        Public Function GetOutgoingEdges(ByVal plngVertexID As Long) As List(Of Long)
+            If Not mdctVertices.ContainsKey(plngVertexID) Then Throw New VertexDoesntExistException(plngVertexID)
+
+            Dim lstEdges As List(Of Long) = mdctVertices(plngVertexID).Edges
+            Dim lstOutgoingEdges As New List(Of Long)
+
+            For Each lngEdgeID As Long In lstEdges
+                If GetEdge(lngEdgeID).StartVertexID = plngVertexID Then
+                    lstOutgoingEdges.Add(lngEdgeID)
+                End If
+            Next
+
+            Return lstOutgoingEdges
         End Function
 #End Region
 
@@ -360,7 +430,7 @@ Namespace DirectedGraph
             If Not mdctVertices.Keys.Contains(plngVertexID) Then Throw New VertexDoesntExistException(plngVertexID)
 
             For Each lngEdgeID As Long In mdctVertices(plngVertexID).Edges
-                If CType(mdctEdges(lngEdgeID), clsDirectedGraphEdge(Of GraphEdgePayload)).EndVertexID = plngVertexID Then
+                If GetEdge(lngEdgeID).EndVertexID = plngVertexID Then
                     Return False
                 End If
             Next
@@ -377,7 +447,7 @@ Namespace DirectedGraph
             If Not mdctVertices.Keys.Contains(plngVertexID) Then Throw New VertexDoesntExistException(plngVertexID)
 
             For Each lngEdgeID As Long In mdctVertices(plngVertexID).Edges
-                If CType(mdctEdges(lngEdgeID), clsDirectedGraphEdge(Of GraphEdgePayload)).StartVertexID = plngVertexID Then
+                If GetEdge(lngEdgeID).StartVertexID = plngVertexID Then
                     Return False
                 End If
             Next
