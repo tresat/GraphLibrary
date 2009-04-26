@@ -7,6 +7,12 @@ Namespace DirectedGraph
     Public Class clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload)
         Inherits clsGraph(Of GraphVertexPayload, GraphEdgePayload)
 #Region "Inner Types"
+#Region "Operations"
+        Public Enum enuOperationType
+            FindAllNonLoopingSourceSinkPaths
+        End Enum
+#End Region
+
 #Region "Vertex"
         Public Class clsDirectedGraphVertex(Of VertexPayload)
             Inherits clsGraph(Of GraphVertexPayload, GraphEdgePayload).clsVertex(Of VertexPayload)
@@ -60,6 +66,14 @@ Namespace DirectedGraph
 #End Region
         End Class
 #End Region
+#End Region
+
+#Region "Constants"
+        Private Const MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS As Integer = 10
+#End Region
+
+#Region "Events"
+        Public Event OperationProgressChanged(ByVal penuOperation As enuOperationType, ByVal plngIdx As Long, ByVal plngLimit As Long)
 #End Region
 
 #Region "Member Vars"
@@ -349,6 +363,21 @@ Namespace DirectedGraph
 
             Dim lstCurrentPath As List(Of Long)
 
+            'Attempt to get a quick path length, so we can use it to estimate
+            'our progress.  If the function fails, complete length will be -1,
+            'and we'll know we can't provide reliable estimates.
+            Dim lstQuickPath As List(Of Long) = GetQuickSourceSinkPath()
+            Dim lngCompletePathLength As Long
+            Dim lngCompleteSearchLevelCount As Long
+            Dim lngCurrentSearchLevel As Long = 0
+
+            If Not lstQuickPath Is Nothing Then
+                lngCompletePathLength = lstQuickPath.Count
+                lngCompleteSearchLevelCount = lngCompletePathLength * mdctSourceVertices.Keys.Count
+            Else
+                lngCompleteSearchLevelCount = -1
+            End If
+
             'Investigate each path from each source node
             For Each lngSource As Long In mdctSourceVertices.Keys
                 'Create new current list, current vertex pair, using the 
@@ -392,10 +421,64 @@ Namespace DirectedGraph
                             End If
                         Next
                     End If
+
+                    'Increment search level count, report progress if nessecary
+                    lngCurrentSearchLevel += 1
+                    If lngCurrentSearchLevel Mod MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS = 0 Then
+                        If lngCompleteSearchLevelCount <> -1 Then
+                            RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, lngCompleteSearchLevelCount)
+                        Else
+                            RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, Nothing)
+                        End If
+                    End If
                 Loop
             Next
 
             Return lstCompletePaths
+        End Function
+
+        ''' <summary>
+        ''' Quickly gets a source->sink path: using the first sink, works backwards to the
+        ''' first source.  If the graph if layered (can be divided up into an ordered list of sets
+        ''' of vertices, such that every edge connects a vertex in a previous set to a vertex in 
+        ''' the next set, with no looping, and all sources exist in the first set, and all sinks
+        ''' exist in the last set), the length of this "quick" source->sink path will be the length
+        ''' of all source->sink paths, which is helpful for providing completion estimates for the
+        ''' find all source->sink path process.
+        ''' 
+        ''' Can fail if graph is not in this layered format, or empty, etc.  No guarantees.
+        ''' </summary>
+        ''' <returns>List of vertex IDs in source->sink order, or nothing on fail.</returns>
+        Private Function GetQuickSourceSinkPath() As List(Of Long)
+            Dim lstResult As New List(Of Long)
+            Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
+
+            Try
+                If mdctSinkVertices.Count > 0 Then
+                    'Start at first sink 
+                    vCurr = mdctSinkVertices(0)
+                    Do Until IsSource(vCurr.VertexID)
+                        'Make sure path isn't looping
+                        If lstResult.Contains(vCurr.VertexID) Then
+                            Return Nothing
+                        Else
+                            'Add current vertex to FRONT of list (to build list in source->sink order)
+                            lstResult.Insert(0, vCurr.VertexID)
+
+                            'Continue at first parent
+                            vCurr = GetVertex(GetEdge(GetIncomingEdges(vCurr.VertexID)(0)).StartVertexID)
+                        End If
+                    Loop
+
+                    Return lstResult
+                Else
+                    'No vertices in graph, return nothing
+                    Return Nothing
+                End If
+            Catch ex As Exception
+                'Something else went wrong: I said No guarantees...
+                Return Nothing
+            End Try
         End Function
 
         ''' <summary>
@@ -417,6 +500,27 @@ Namespace DirectedGraph
             Next
 
             Return lstOutgoingEdges
+        End Function
+
+        ''' <summary>
+        ''' Gets the incoming edges from a vertex.
+        ''' </summary>
+        ''' <exception cref="VertexDoesntExistException">For bad vertex IDs.</exception>
+        ''' <param name="plngVertexID">The vertex ID to investigate.</param>
+        ''' <returns>A list of incoming edge IDs.</returns>
+        Public Function GetIncomingEdges(ByVal plngVertexID As Long) As List(Of Long)
+            If Not mdctVertices.ContainsKey(plngVertexID) Then Throw New VertexDoesntExistException(plngVertexID)
+
+            Dim lstEdges As List(Of Long) = mdctVertices(plngVertexID).Edges
+            Dim lstIncomingEdges As New List(Of Long)
+
+            For Each lngEdgeID As Long In lstEdges
+                If GetEdge(lngEdgeID).EndVertexID = plngVertexID Then
+                    lstIncomingEdges.Add(lngEdgeID)
+                End If
+            Next
+
+            Return lstIncomingEdges
         End Function
 #End Region
 
