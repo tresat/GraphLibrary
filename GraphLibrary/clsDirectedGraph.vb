@@ -138,6 +138,28 @@ Namespace DirectedGraph
         End Function
 
         ''' <summary>
+        ''' Gets the edges joining 2 vertices in the specified order.
+        ''' </summary>
+        ''' <exception cref="VertexDoesntExistException">If the start or end vertices don't exist.</exception>
+        ''' <param name="plngStartVertexID">The start vertex ID.</param>
+        ''' <param name="plngEndVertexID">The end vertex ID.</param>
+        ''' <returns>A list of the edge objects connecting the two vertices.</returns>
+        Public Function GetConnectingEdges(ByVal plngStartVertexID As Long, ByVal plngEndVertexID As Long) As List(Of clsDirectedGraphEdge(Of GraphEdgePayload))
+            Dim lstResult As New List(Of clsDirectedGraphEdge(Of GraphEdgePayload))
+            Dim lstEdges As List(Of Long) = GetVertex(plngStartVertexID).Edges
+            Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload)
+
+            For Each lngEdgeID As Long In lstEdges
+                eCurr = GetEdge(lngEdgeID)
+                If plngStartVertexID = eCurr.StartVertexID() Then
+                    lstResult.Add(eCurr)
+                End If
+            Next
+
+            Return lstResult
+        End Function
+
+        ''' <summary>
         ''' Adds a new source vertex.  Ironically, as this vertex has no outgoing
         ''' edges, it is also a sink vertex, and must be marked as such.
         ''' </summary>
