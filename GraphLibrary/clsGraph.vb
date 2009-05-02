@@ -221,6 +221,22 @@ Namespace Graph
 
 #Region "Public Functionality"
         ''' <summary>
+        ''' Accessor for vertex count.
+        ''' </summary>
+        ''' <returns>The number of vertices currently in the graph.</returns>
+        Public Function NumVertices() As Integer
+            Return mdctVertices.Count
+        End Function
+
+        ''' <summary>
+        ''' Accessor for edge count.
+        ''' </summary>
+        ''' <returns>The number of edges currently in the graph.</returns>
+        Public Function NumEdges() As Integer
+            Return mdctEdges.Count
+        End Function
+
+        ''' <summary>
         ''' Returns the specified vertex.  Throws exception if it doesn't exist.
         ''' </summary>
         ''' <param name="plngID">The vertex ID.</param>

@@ -402,7 +402,7 @@ Namespace DirectedGraph
             Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
             Dim lstOutgoingEdges As List(Of Long)
             Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload)
-
+            Dim intLim As Integer
             Dim lstCurrentPath As List(Of Long)
 
             'Attempt to get a quick path length, so we can use it to estimate
@@ -421,11 +421,11 @@ Namespace DirectedGraph
             End If
 
             'Investigate each path from each source node
-            For Each lngSource As Long In mdctSourceVertices.Keys
+            For Each lngSourceID As Long In mdctSourceVertices.Keys
                 'Create new current list, current vertex pair, using the 
                 'source vertex we has iterated to, add it to a fresh working paths list
                 lstCurrentPath = New List(Of Long)
-                lstCurrentPath.Add(lngSource)
+                lstCurrentPath.Add(lngSourceID)
                 lstWorkingPaths.Add(lstCurrentPath)
 
                 'Continue until each working path from this source has hit a sink 
@@ -438,18 +438,15 @@ Namespace DirectedGraph
                     lstCurrentPath = lstWorkingPaths(0)
                     vCurr = GetVertex(lstCurrentPath(0))
 
-                    If IsSink(vCurr.VertexID) Then
-                        'Add the current path to the 
-                        'complete paths list, and we're done with the current path,
-                        'so remove it from the working paths list
-                        lstCompletePaths.Add(lstCurrentPath)
-                        lstWorkingPaths.RemoveAt(0)
-                    Else
-                        'Paths out exist, need to loop all of them and create new working path copies
+                    Do Until IsSink(vCurr.VertexID)
+                        'Check if paths out exist, need to loop all of them and create new working path copies
                         'for the working paths list
                         lstOutgoingEdges = GetOutgoingEdges(vCurr.VertexID)
-                        For Each lngEdgeID As Long In lstOutgoingEdges
-                            eCurr = GetEdge(lngEdgeID)
+
+                        'If more than one path out, add the others as new working paths
+                        intLim = lstOutgoingEdges.Count - 1
+                        For intIdx As Integer = 1 To intLim
+                            eCurr = GetEdge(lstOutgoingEdges(intIdx))
                             vCurr = GetVertex(eCurr.EndVertexID)
 
                             'Prevent looping: ensure next vertex is not already in list of vertices,
@@ -462,17 +459,32 @@ Namespace DirectedGraph
                                 lstWorkingPaths.Add(New List(Of Long)(lstCurrentPath))
                             End If
                         Next
-                    End If
 
-                    'Increment search level count, report progress if nessecary
-                    lngCurrentSearchLevel += 1
-                    If lngCurrentSearchLevel Mod MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS = 0 Then
-                        If lngCompleteSearchLevelCount <> -1 Then
-                            RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, lngCompleteSearchLevelCount)
+                        'If at least one path out exists, move to it and continue hunt
+                        If lstOutgoingEdges.Count > 0 Then
+                            eCurr = GetEdge(lstOutgoingEdges(0))
+                            vCurr = GetVertex(eCurr.EndVertexID)
                         Else
-                            RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, Nothing)
+                            'Something very strange has happened
+                            Throw New Exception("Not at sink, yet no outgoing edges exist!")
                         End If
-                    End If
+
+                        'Increment search level count, report progress if nessecary
+                        lngCurrentSearchLevel += 1
+                        If lngCurrentSearchLevel Mod MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS = 0 Then
+                            If lngCompleteSearchLevelCount <> -1 Then
+                                RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, lngCompleteSearchLevelCount)
+                            Else
+                                RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, Nothing)
+                            End If
+                        End If
+                    Loop
+
+                    'Add the current path to the 
+                    'complete paths list, and we're done with the current path,
+                    'so remove it from the working paths list
+                    lstCompletePaths.Add(lstCurrentPath)
+                    lstWorkingPaths.RemoveAt(0)
                 Loop
             Next
 
@@ -498,7 +510,7 @@ Namespace DirectedGraph
             Try
                 If mdctSinkVertices.Count > 0 Then
                     'Start at first sink 
-                    vCurr = mdctSinkVertices(0)
+                    vCurr = mdctSinkVertices.Values(0)
                     Do Until IsSource(vCurr.VertexID)
                         'Make sure path isn't looping
                         If lstResult.Contains(vCurr.VertexID) Then
@@ -511,6 +523,9 @@ Namespace DirectedGraph
                             vCurr = GetVertex(GetEdge(GetIncomingEdges(vCurr.VertexID)(0)).StartVertexID)
                         End If
                     Loop
+
+                    'Finally, add the source we hit to the front of the list
+                    lstResult.Insert(0, vCurr.VertexID)
 
                     Return lstResult
                 Else
