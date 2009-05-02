@@ -328,20 +328,23 @@ Namespace Graph
         ''' Throws exception if the vertex does not exist.
         ''' </summary>
         ''' <param name="plngVertexID">The vertex ID to remove.</param>
-        ''' <param name="pblnRemoveAttachedEdges">if set to <c>true</c> [remove attached edges].</param>
-        Public Overridable Sub RemoveVertex(ByVal plngVertexID As Long, Optional ByVal pblnRemoveAttachedEdges As Boolean = True)
+        Public Overridable Sub RemoveVertex(ByVal plngVertexID As Long)
             Dim vRemove As clsVertex(Of GraphVertexPayload)
+            Dim lstEdgeIDsToRemove As List(Of Long)
+            Dim intLim As Integer
+            Dim lngEdgeID As Long
 
             If mdctVertices.Keys.Contains(plngVertexID) Then
                 vRemove = mdctVertices(plngVertexID)
 
-                mdctVertices.Remove(plngVertexID)
+                lstEdgeIDsToRemove = New List(Of Long)(vRemove.Edges)
+                intLim = lstEdgeIDsToRemove.Count - 1
+                For intidx As Integer = 0 To intLim
+                    lngEdgeID = lstEdgeIDsToRemove(intidx)
+                    RemoveEdge(lngEdgeID)
+                Next
 
-                If pblnRemoveAttachedEdges Then
-                    For Each lngEdgeID As Long In vRemove.Edges
-                        RemoveEdge(lngEdgeID)
-                    Next
-                End If
+                mdctVertices.Remove(plngVertexID)
             Else
                 Throw New VertexDoesntExistException(plngVertexID)
             End If

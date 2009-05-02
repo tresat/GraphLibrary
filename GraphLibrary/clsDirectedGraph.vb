@@ -317,8 +317,7 @@ Namespace DirectedGraph
         ''' Throws exception if the vertex does not exist.
         ''' </summary>
         ''' <param name="plngVertexID">The vertex ID to remove.</param>
-        ''' <param name="pblnRemoveAttachedEdges">if set to <c>true</c> [remove attached edges].</param>
-        Public Overrides Sub RemoveVertex(ByVal plngVertexID As Long, Optional ByVal pblnRemoveAttachedEdges As Boolean = True)
+        Public Overrides Sub RemoveVertex(ByVal plngVertexID As Long)
             MyBase.RemoveVertex(plngVertexID)
 
             If mdctSinkVertices.Keys.Contains(plngVertexID) Then
@@ -375,6 +374,11 @@ Namespace DirectedGraph
                 eSwap.mlngVertexID1 = vNewEnd.VertexID
             End If
 
+            'Now update the edge list of the old end vertex to remove the edge,
+            'and add it to the new end vertex
+            vOldEnd.Edges.Remove(eSwap.EdgeID)
+            vNewEnd.Edges.Add(eSwap.EdgeID)
+
             'Check if the old end vertex (which now lacks an incoming edge)
             'is now a source
             If VerifySource(vOldEnd.VertexID) Then
@@ -386,8 +390,6 @@ Namespace DirectedGraph
             If Not VerifySource(vNewEnd.VertexID) Then
                 mdctSourceVertices.Remove(vNewEnd.VertexID)
             End If
-
-            'TODO: I'm busted (maybe), not adjusting individual vertices edge list endpoints???
         End Sub
 
         ''' <summary>
@@ -489,7 +491,7 @@ Namespace DirectedGraph
         ''' Can fail if graph is not in this layered format, or empty, etc.  No guarantees.
         ''' </summary>
         ''' <returns>List of vertex IDs in source->sink order, or nothing on fail.</returns>
-        Protected Function GetQuickSourceSinkPath() As List(Of Long)
+        Public Function GetQuickSourceSinkPath() As List(Of Long)
             Dim lstResult As New List(Of Long)
             Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
 
@@ -561,6 +563,31 @@ Namespace DirectedGraph
             Next
 
             Return lstIncomingEdges
+        End Function
+
+        ''' <summary>
+        ''' Tests for the existence of an edge connecting the two vertices in the specified order.
+        ''' </summary>
+        ''' <exception cref="VertexDoesntExistException">if either vertex doesn't exist</exception>
+        ''' <param name="plngStartVertexID">The start vertex ID.</param>
+        ''' <param name="plngEndVertexID">The end vertex ID.</param>
+        ''' <returns><c>true</c> if edge exists, <c>false</c> otherwise.</returns>
+        Public Function EdgeExists(ByVal plngStartVertexID As Long, ByVal plngEndVertexID As Long) As Boolean
+            If Not mdctVertices.ContainsKey(plngStartVertexID) Then Throw New VertexDoesntExistException(plngStartVertexID)
+            If Not mdctVertices.ContainsKey(plngEndVertexID) Then Throw New VertexDoesntExistException(plngEndVertexID)
+
+            Dim lstEdges As List(Of Long) = mdctVertices(plngStartVertexID).Edges
+            Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload)
+
+            For Each lngEdgeID As Long In lstEdges
+                eCurr = GetEdge(lngEdgeID)
+                If eCurr.StartVertexID = plngStartVertexID AndAlso _
+                    eCurr.EndVertexID = plngEndVertexID Then
+                    Return True
+                End If
+            Next
+
+            Return False
         End Function
 #End Region
 
