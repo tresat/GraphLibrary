@@ -8,7 +8,7 @@ Namespace Graph
         Inherits Exception
 
 #Region "Member Vars"
-        Private mlngVertexID As Long
+        Protected mlngVertexID As Long
 #End Region
 
 #Region "Properties"
@@ -40,7 +40,7 @@ Namespace Graph
         Inherits Exception
 
 #Region "Member Vars"
-        Private mlngEdgeID As Long
+        Protected mlngEdgeID As Long
 #End Region
 
 #Region "Properties"
@@ -111,6 +111,8 @@ Namespace Graph
             Protected Friend Sub New(ByVal plngVertexID As Long, Optional ByRef pvpPayload As VertexPayload = Nothing)
                 mlngVertexID = plngVertexID
                 mvpPayload = pvpPayload
+
+                mlstEdges = New List(Of Long)
             End Sub
 #End Region
 
@@ -317,6 +319,8 @@ Namespace Graph
             mdctEdges.Add(eNew.EdgeID, eNew)
 
             mlngNextEdgeID += 1
+
+            Return eNew.EdgeID
         End Function
 
         ''' <summary>
@@ -353,12 +357,8 @@ Namespace Graph
             If mdctEdges.Keys.Contains(plngEdgeID) Then
                 eRemove = mdctEdges(plngEdgeID)
 
-                If Not eRemove.VertexID1 = Nothing Then
-                    mdctVertices(eRemove.VertexID1).RemoveEdge(eRemove.EdgeID)
-                End If
-                If Not eRemove.VertexID2 = Nothing Then
-                    mdctVertices(eRemove.VertexID2).RemoveEdge(eRemove.EdgeID)
-                End If
+                mdctVertices(eRemove.VertexID1).RemoveEdge(eRemove.EdgeID)
+                mdctVertices(eRemove.VertexID2).RemoveEdge(eRemove.EdgeID)
 
                 mdctEdges.Remove(eRemove.EdgeID)
             Else

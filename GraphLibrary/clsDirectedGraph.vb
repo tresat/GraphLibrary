@@ -18,7 +18,7 @@ Namespace DirectedGraph
             Inherits clsGraph(Of GraphVertexPayload, GraphEdgePayload).clsVertex(Of VertexPayload)
 
 #Region "Constructors"
-            Public Sub New(ByVal plngVertexID As Long, Optional ByRef pvpPayload As VertexPayload = Nothing)
+            Protected Friend Sub New(ByVal plngVertexID As Long, Optional ByRef pvpPayload As VertexPayload = Nothing)
                 MyBase.New(plngVertexID, pvpPayload)
             End Sub
 #End Region
@@ -33,7 +33,7 @@ Namespace DirectedGraph
 #End Region
 
 #Region "Constructors"
-            Protected Sub New(ByVal plngEdgeID As Long, ByVal plngStartVertexID As Long, ByVal plngEndVertexID As Long, Optional ByRef pepPayload As EdgePayload = Nothing)
+            Protected Friend Sub New(ByVal plngEdgeID As Long, ByVal plngStartVertexID As Long, ByVal plngEndVertexID As Long, Optional ByRef pepPayload As EdgePayload = Nothing)
                 MyBase.New(plngEdgeID, plngStartVertexID, plngEndVertexID, pepPayload)
 
                 mlngStartVertexID = plngStartVertexID
@@ -69,7 +69,7 @@ Namespace DirectedGraph
 #End Region
 
 #Region "Constants"
-        Private Const MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS As Integer = 10
+        Protected Const MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS As Integer = 10
 #End Region
 
 #Region "Events"
@@ -77,8 +77,8 @@ Namespace DirectedGraph
 #End Region
 
 #Region "Member Vars"
-        Private mdctSourceVertices As Dictionary(Of Long, clsDirectedGraphVertex(Of GraphVertexPayload))
-        Private mdctSinkVertices As Dictionary(Of Long, clsDirectedGraphVertex(Of GraphVertexPayload))
+        Protected mdctSourceVertices As Dictionary(Of Long, clsDirectedGraphVertex(Of GraphVertexPayload))
+        Protected mdctSinkVertices As Dictionary(Of Long, clsDirectedGraphVertex(Of GraphVertexPayload))
 #End Region
 
 #Region "Constructors"
@@ -279,7 +279,23 @@ Namespace DirectedGraph
         ''' <param name="plngEndVertexID">The vertex ID where the edge ends.</param>
         ''' <returns></returns>
         Public Overrides Function AddNewEdge(ByVal plngStartVertexID As Long, ByVal plngEndVertexID As Long, Optional ByRef pepEdgePayload As GraphEdgePayload = Nothing) As Long
-            Dim lngNewEdgeID As Long = MyBase.AddNewEdge(plngStartVertexID, plngEndVertexID, pepEdgePayload)
+            Dim eNew As clsDirectedGraphEdge(Of GraphEdgePayload)
+
+            If Not mdctVertices.Keys.Contains(plngStartVertexID) Then
+                Throw New VertexDoesntExistException(plngStartVertexID)
+            End If
+            If Not mdctVertices.Keys.Contains(plngEndVertexID) Then
+                Throw New VertexDoesntExistException(plngEndVertexID)
+            End If
+
+            eNew = New clsDirectedGraphEdge(Of GraphEdgePayload)(mlngNextEdgeID, plngStartVertexID, plngEndVertexID, pepEdgePayload)
+
+            mdctVertices(plngStartVertexID).AddEdge(eNew.EdgeID)
+            mdctVertices(plngEndVertexID).AddEdge(eNew.EdgeID)
+
+            mdctEdges.Add(eNew.EdgeID, eNew)
+
+            mlngNextEdgeID += 1
 
             'Now check if the vertex we added an outgoing edge to WAS a sink,
             'it will be no more
@@ -293,7 +309,7 @@ Namespace DirectedGraph
                 mdctSourceVertices.Remove(plngEndVertexID)
             End If
 
-            Return lngNewEdgeID
+            Return eNew.EdgeID
         End Function
 
         ''' <summary>
@@ -324,7 +340,7 @@ Namespace DirectedGraph
             Dim lngStartVertexID As Long = eCurr.StartVertexID
             Dim lngEndVertexID As Long = eCurr.EndVertexID
 
-            MyBase.RemoveEdge(plngEdgeID)
+            MyBase.RemoveEdge(eCurr.EdgeID)
 
             'Check if start vertex is now a sink
             If VerifySink(lngStartVertexID) Then
@@ -370,6 +386,8 @@ Namespace DirectedGraph
             If Not VerifySource(vNewEnd.VertexID) Then
                 mdctSourceVertices.Remove(vNewEnd.VertexID)
             End If
+
+            'TODO: I'm busted (maybe), not adjusting individual vertices edge list endpoints???
         End Sub
 
         ''' <summary>
@@ -471,7 +489,7 @@ Namespace DirectedGraph
         ''' Can fail if graph is not in this layered format, or empty, etc.  No guarantees.
         ''' </summary>
         ''' <returns>List of vertex IDs in source->sink order, or nothing on fail.</returns>
-        Private Function GetQuickSourceSinkPath() As List(Of Long)
+        Protected Function GetQuickSourceSinkPath() As List(Of Long)
             Dim lstResult As New List(Of Long)
             Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
 
@@ -546,7 +564,7 @@ Namespace DirectedGraph
         End Function
 #End Region
 
-#Region "Private Helpers"
+#Region "Protected Helpers"
         ''' <summary>
         ''' Verifies the source-ness of a vertex: checks each vertex for incoming edges.
         ''' </summary>
