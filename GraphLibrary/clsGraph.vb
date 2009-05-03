@@ -221,6 +221,20 @@ Namespace Graph
 
 #Region "Public Functionality"
         ''' <summary>
+        ''' Gets a list of all vertices in the graph.
+        ''' </summary>
+        ''' <returns>A list of all vertex IDs in the graph.</returns>
+        Public Function Vertices() As List(Of Long)
+            Dim lstResult As New List(Of Long)
+
+            For Each lngVertexID As Long In mdctVertices.Keys
+                lstResult.Add(lngVertexID)
+            Next
+
+            Return lstResult
+        End Function
+
+        ''' <summary>
         ''' Accessor for vertex count.
         ''' </summary>
         ''' <returns>The number of vertices currently in the graph.</returns>
@@ -364,6 +378,10 @@ Namespace Graph
             Else
                 Throw New VertexDoesntExistException(plngVertexID)
             End If
+        End Sub
+
+        Public Overridable Sub RemovePathsToVertex(ByVal plngVertexID As Long)
+            Throw New NotImplementedException("RemovePathsToVertex only currently exists in derived classes.")
         End Sub
 
         ''' <summary>

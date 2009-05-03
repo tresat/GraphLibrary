@@ -151,7 +151,7 @@ Namespace DirectedGraph
 
             For Each lngEdgeID As Long In lstEdges
                 eCurr = GetEdge(lngEdgeID)
-                If plngStartVertexID = eCurr.StartVertexID() Then
+                If plngStartVertexID = eCurr.StartVertexID() AndAlso plngEndVertexID = eCurr.EndVertexID() Then
                     lstResult.Add(eCurr)
                 End If
             Next
@@ -329,6 +329,47 @@ Namespace DirectedGraph
         End Sub
 
         ''' <summary>
+        ''' Removes the vertex from the graph.  Walks backwards up all paths
+        ''' terminating at the vertex, removing all paths to the vertex by deleting
+        ''' vertices along those paths until hitting a vertex which has outgoing
+        ''' edges to vertices NOT along one of those paths to the vertex to remove.
+        ''' </summary>
+        ''' <param name="plngVertexID">The vertex ID to remove all paths to.</param>
+        Public Overrides Sub RemovePathsToVertex(ByVal plngVertexID As Long)
+            Dim lstVerticesToRemove As New List(Of Long)
+            Dim lngVertexIDToRemove As Long
+            Dim lngParentID As Long
+            Dim blnParentCanBeRemoved As Boolean
+
+            lstVerticesToRemove.Add(plngVertexID)
+            Do Until lstVerticesToRemove.Count = 0
+                lngVertexIDToRemove = lstVerticesToRemove(0)
+
+                'Get all the parents of the vertex to remove
+                For Each lngEdgeID As Long In GetIncomingEdges(lngVertexIDToRemove)
+                    'If the parent has no outgoing edges except ones going to the vertex to 
+                    'remove, it can also be removed
+                    lngParentID = GetEdge(lngEdgeID).StartVertexID()
+                    blnParentCanBeRemoved = True
+                    For Each lngParentEdgeID As Long In GetOutgoingEdges(lngParentID)
+                        If GetEdge(lngParentEdgeID).EndVertexID <> lngVertexIDToRemove Then
+                            blnParentCanBeRemoved = False
+                            Exit For
+                        End If
+                    Next
+
+                    If blnParentCanBeRemoved Then
+                        lstVerticesToRemove.Add(lngParentID)
+                    End If
+                Next
+
+                'Remove the vertex to remove
+                RemoveVertex(lngVertexIDToRemove)
+                lstVerticesToRemove.Remove(lngVertexIDToRemove)
+            Loop
+        End Sub
+
+        ''' <summary>
         ''' Removes an edge from the graph.
         ''' </summary>
         ''' <param name="plngEdgeID">The edge ID to remove.</param>
@@ -367,6 +408,11 @@ Namespace DirectedGraph
             Dim vOldEnd As clsDirectedGraphVertex(Of GraphVertexPayload) = GetVertex(eSwap.EndVertexID)
             Dim vNewEnd As clsDirectedGraphVertex(Of GraphVertexPayload) = GetVertex(plngReplacementVertexID)
 
+            If vOldEnd.VertexID = vNewEnd.VertexID Then
+                'no need to do anything
+                Return
+            End If
+
             'Change the end vertex of the edge using the friend accessibility
             If eSwap.StartVertexID = eSwap.VertexID1 Then
                 eSwap.mlngVertexID2 = vNewEnd.VertexID
@@ -374,20 +420,29 @@ Namespace DirectedGraph
                 eSwap.mlngVertexID1 = vNewEnd.VertexID
             End If
 
-            'Now update the edge list of the old end vertex to remove the edge,
-            'and add it to the new end vertex
+            'Now update the edge list of the old end vertex to remove the edge
             vOldEnd.Edges.Remove(eSwap.EdgeID)
-            vNewEnd.Edges.Add(eSwap.EdgeID)
 
-            'Check if the old end vertex (which now lacks an incoming edge)
-            'is now a source
-            If VerifySource(vOldEnd.VertexID) Then
-                mdctSourceVertices.Add(vOldEnd.VertexID, vOldEnd)
-            End If
+            'If the end vertex is not the start vertex (a looping edge),
+            'add the edge to the vertex's edge list, and check to update
+            'source/sink collections
+            If Not vNewEnd.VertexID = eSwap.StartVertexID Then
+                vNewEnd.Edges.Add(eSwap.EdgeID)
 
-            'Check if the new end vertex (which has now gained an incoming edge)
-            'is no longer a source
-            If Not VerifySource(vNewEnd.VertexID) Then
+                'Check if the old end vertex (which now lacks an incoming edge)
+                'is now a source
+                If VerifySource(vOldEnd.VertexID) Then
+                    mdctSourceVertices.Add(vOldEnd.VertexID, vOldEnd)
+                End If
+
+                'Check if the new end vertex (which has now gained an incoming edge)
+                'is no longer a source
+                If Not VerifySource(vNewEnd.VertexID) Then
+                    mdctSourceVertices.Remove(vNewEnd.VertexID)
+                End If
+            Else
+                'Vertex can be neither source nor sink with a looping edge
+                mdctSinkVertices.Remove(vNewEnd.VertexID)
                 mdctSourceVertices.Remove(vNewEnd.VertexID)
             End If
         End Sub
@@ -404,6 +459,8 @@ Namespace DirectedGraph
             Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload)
             Dim intLim As Integer
             Dim lstCurrentPath As List(Of Long)
+            Dim lstNewPath As List(Of Long)
+            Dim blnFoundEdgeOut As Boolean
 
             'Attempt to get a quick path length, so we can use it to estimate
             'our progress.  If the function fails, complete length will be -1,
@@ -416,6 +473,9 @@ Namespace DirectedGraph
             If Not lstQuickPath Is Nothing Then
                 lngCompletePathLength = lstQuickPath.Count
                 lngCompleteSearchLevelCount = lngCompletePathLength * mdctSourceVertices.Keys.Count
+                'TODO: thought: can this count be replaced with the edge count (as each edge lies
+                'by def on a path from a source to a sink, and thus must be hit in the search exactly once,
+                'i think...)
             Else
                 lngCompleteSearchLevelCount = -1
             End If
@@ -423,10 +483,10 @@ Namespace DirectedGraph
             'Investigate each path from each source node
             For Each lngSourceID As Long In mdctSourceVertices.Keys
                 'Create new current list, current vertex pair, using the 
-                'source vertex we has iterated to, add it to a fresh working paths list
-                lstCurrentPath = New List(Of Long)
-                lstCurrentPath.Add(lngSourceID)
-                lstWorkingPaths.Add(lstCurrentPath)
+                'source vertex we has iterated to, add it to a fresh working paths list.
+                lstNewPath = New List(Of Long)
+                lstNewPath.Add(lngSourceID)
+                lstWorkingPaths.Add(lstNewPath)
 
                 'Continue until each working path from this source has hit a sink 
                 '(we'll delete the paths that loop back to a previously visited vertex,
@@ -434,11 +494,18 @@ Namespace DirectedGraph
                 'we move them to the complete paths list...so when this working
                 'list is empty, we're done with this source)
                 Do Until lstWorkingPaths.Count = 0
-                    'Use the first list in the list of working paths
+                    'Use the first list in the list of working paths, and set our start vertex
+                    'to the LAST vertex in that working path
                     lstCurrentPath = lstWorkingPaths(0)
-                    vCurr = GetVertex(lstCurrentPath(0))
+                    vCurr = GetVertex(lstCurrentPath.Last)
 
-                    Do Until IsSink(vCurr.VertexID)
+                    blnFoundEdgeOut = True 'don't want loop entering to fail
+
+                    'We will increment the vCurr var as we move along the path,
+                    'when it hits a sink we're done
+                    Do Until IsSink(vCurr.VertexID) Or Not blnFoundEdgeOut
+                        blnFoundEdgeOut = False
+
                         'Check if paths out exist, need to loop all of them and create new working path copies
                         'for the working paths list
                         lstOutgoingEdges = GetOutgoingEdges(vCurr.VertexID)
@@ -452,18 +519,32 @@ Namespace DirectedGraph
                             'Prevent looping: ensure next vertex is not already in list of vertices,
                             'only continue along path if this is not the case
                             If Not lstCurrentPath.Contains(vCurr.VertexID) Then
-                                lstCurrentPath = lstWorkingPaths(0) 'reset current path to first in working path
-                                lstCurrentPath.Add(vCurr.VertexID)
+                                'And add a new path to consider which branches out here
+                                lstNewPath = New List(Of Long)(lstCurrentPath)
+                                lstNewPath.Add(vCurr.VertexID)
+                                lstWorkingPaths.Add(lstNewPath)
 
-                                'Add a copy of the current path, cloned from current path
-                                lstWorkingPaths.Add(New List(Of Long)(lstCurrentPath))
+                                Debug.Assert(lstNewPath.Count <= mdctEdges.Count)
+                                blnFoundEdgeOut = True
                             End If
                         Next
 
-                        'If at least one path out exists, move to it and continue hunt
+                        'If at least one path out exists, move to the first one 
+                        '(since the others will have been added already to the
+                        'list of working paths for later consideration) and continue hunt
                         If lstOutgoingEdges.Count > 0 Then
                             eCurr = GetEdge(lstOutgoingEdges(0))
                             vCurr = GetVertex(eCurr.EndVertexID)
+
+                            'Prevent looping: ensure next vertex is not already in list of vertices,
+                            'only continue along path if this is not the case
+                            If Not lstCurrentPath.Contains(vCurr.VertexID) Then
+                                'Add to current path the vertex we've moved to
+                                lstCurrentPath.Add(vCurr.VertexID)
+                                blnFoundEdgeOut = True
+                            End If
+
+                            Debug.Assert(lstCurrentPath.Count <= mdctEdges.Count + 1)
                         Else
                             'Something very strange has happened
                             Throw New Exception("Not at sink, yet no outgoing edges exist!")
