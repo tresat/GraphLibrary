@@ -217,6 +217,11 @@ Namespace Graph
             mdctEdges = New Dictionary(Of Long, clsEdge(Of GraphEdgePayload))
             mdctVertices = New Dictionary(Of Long, clsVertex(Of GraphVertexPayload))
         End Sub
+
+        Public Sub New(ByVal pobjGraph As clsGraph(Of GraphVertexPayload, GraphEdgePayload))
+            mdctVertices = New Dictionary(Of Long, clsVertex(Of GraphVertexPayload))(pobjGraph.mdctVertices)
+            mdctEdges = New Dictionary(Of Long, clsEdge(Of GraphEdgePayload))(pobjGraph.mdctEdges)
+        End Sub
 #End Region
 
 #Region "Public Functionality"

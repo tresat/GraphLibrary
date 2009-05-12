@@ -69,7 +69,7 @@ Namespace DirectedGraph
 #End Region
 
 #Region "Constants"
-        Protected Const MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS As Integer = 10
+        Protected Const MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS As Integer = 1
 #End Region
 
 #Region "Events"
@@ -107,6 +107,13 @@ Namespace DirectedGraph
                     AddSourceVertex(Nothing)
                 End If
             Next
+        End Sub
+
+        Public Sub New(ByRef pobjSourceGraph As clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload))
+            MyBase.New(pobjSourceGraph)
+
+            mdctSourceVertices = New Dictionary(Of Long, clsDirectedGraphVertex(Of GraphVertexPayload))(pobjSourceGraph.mdctSourceVertices)
+            mdctSinkVertices = New Dictionary(Of Long, clsDirectedGraphVertex(Of GraphVertexPayload))(pobjSourceGraph.mdctSinkVertices)
         End Sub
 #End Region
 
@@ -448,6 +455,118 @@ Namespace DirectedGraph
         End Sub
 
         ''' <summary>
+        ''' Gets the next X valid non looping source sink paths.
+        ''' </summary>
+        ''' <param name="pintNumPaths">The maximum number of paths to return (if this many exists).</param>
+        ''' <returns>A list of lists, where each list is a list of vertex ids, starting with the source, ending with the sink.</returns>
+        Public Function GetNextNonLoopingSourceSinkPaths(ByVal pintNumPaths As Integer) As List(Of List(Of Long))
+            Static lstWorkingPaths As New List(Of List(Of Long))
+            Static blnInitializationDone As Boolean = False
+
+            Dim lstCompletePaths As New List(Of List(Of Long))
+            Dim vCurr As clsDirectedGraphVertex(Of GraphVertexPayload)
+            Dim lstOutgoingEdges As List(Of Long)
+            Dim eCurr As clsDirectedGraphEdge(Of GraphEdgePayload)
+            Dim intLim As Integer
+            Dim lstCurrentPath As List(Of Long)
+            Dim lstNewPath As List(Of Long)
+            Dim blnFoundEdgeOut As Boolean
+
+            If Not blnInitializationDone Then
+                'Investigate each path from each source node, so pop all source
+                'nodes into working paths list as unique working paths.  We only
+                'need to do this the first time this function is called
+                For Each lngSourceID As Long In mdctSourceVertices.Keys
+                    'Create new current list, current vertex pair, using the 
+                    'source vertex we has iterated to, add it to a fresh working paths list.
+                    lstNewPath = New List(Of Long)
+                    lstNewPath.Add(lngSourceID)
+                    lstWorkingPaths.Add(lstNewPath)
+                Next
+
+                blnInitializationDone = True
+            End If
+
+            'Continue until each working path has hit a sink 
+            '(we'll delete the paths that loop back to a previously visited vertex,
+            'and we'll also remove them from this list as they hit sinks and
+            'we move them to the complete paths list...so when this working
+            'list is empty, we're done with this source).
+            'OR until num paths complete paths are found.
+            Do Until lstWorkingPaths.Count = 0 Or lstCompletePaths.Count = pintNumPaths
+                'Use the first list in the list of working paths, and set our start vertex
+                'to the LAST vertex in that working path
+                lstCurrentPath = lstWorkingPaths(0)
+                vCurr = GetVertex(lstCurrentPath.Last)
+
+                blnFoundEdgeOut = True 'don't want loop entering to fail
+
+                'We will increment the vCurr var as we move along the path,
+                'when it hits a sink we're done
+                Do Until IsSink(vCurr.VertexID) Or Not blnFoundEdgeOut
+                    blnFoundEdgeOut = False
+
+                    'Check if paths out exist, need to loop all of them and create new working path copies
+                    'for the working paths list
+                    lstOutgoingEdges = GetOutgoingEdges(vCurr.VertexID)
+
+                    'If more than one path out, add the others as new working paths
+                    intLim = lstOutgoingEdges.Count - 1
+                    For intIdx As Integer = 1 To intLim
+                        eCurr = GetEdge(lstOutgoingEdges(intIdx))
+                        vCurr = GetVertex(eCurr.EndVertexID)
+
+                        'Prevent looping: ensure next vertex is not already in list of vertices,
+                        'only continue along path if this is not the case
+                        If Not lstCurrentPath.Contains(vCurr.VertexID) Then
+                            'And add a new path to consider which branches out here
+                            lstNewPath = New List(Of Long)(lstCurrentPath)
+                            lstNewPath.Add(vCurr.VertexID)
+                            lstWorkingPaths.Add(lstNewPath)
+
+                            Debug.Assert(lstNewPath.Count <= mdctEdges.Count)
+                            blnFoundEdgeOut = True
+                        End If
+                    Next
+
+                    'If at least one path out exists, move to the first one 
+                    '(since the others will have been added already to the
+                    'list of working paths for later consideration) and continue hunt
+                    If lstOutgoingEdges.Count > 0 Then
+                        eCurr = GetEdge(lstOutgoingEdges(0))
+                        vCurr = GetVertex(eCurr.EndVertexID)
+
+                        'Prevent looping: ensure next vertex is not already in list of vertices,
+                        'only continue along path if this is not the case
+                        If Not lstCurrentPath.Contains(vCurr.VertexID) Then
+                            'Add to current path the vertex we've moved to
+                            lstCurrentPath.Add(vCurr.VertexID)
+                            blnFoundEdgeOut = True
+                        End If
+
+                        Debug.Assert(lstCurrentPath.Count <= mdctEdges.Count + 1)
+                    Else
+                        'Something very strange has happened
+                        Throw New Exception("Not at sink, yet no outgoing edges exist!")
+                    End If
+                Loop
+
+                'Add the current path to the 
+                'complete paths list, and we're done with the current path,
+                'so remove it from the working paths list
+                lstCompletePaths.Add(lstCurrentPath)
+                lstWorkingPaths.RemoveAt(0)
+
+                'Increment search level count, report progress if nessecary
+                If lstCompletePaths.Count Mod MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS = 0 Then
+                    RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lstCompletePaths.Count, pintNumPaths)
+                End If
+            Loop
+
+            Return lstCompletePaths
+        End Function
+
+        ''' <summary>
         ''' Gets all valid source->sink paths which do not contain loops.
         ''' </summary>
         ''' <returns>A list of lists, where each list is a list of vertex ids, starting with the source, ending with the sink.</returns>
@@ -472,10 +591,10 @@ Namespace DirectedGraph
 
             If Not lstQuickPath Is Nothing Then
                 lngCompletePathLength = lstQuickPath.Count
-                lngCompleteSearchLevelCount = lngCompletePathLength * mdctSourceVertices.Keys.Count
+                lngCompleteSearchLevelCount = mdctSourceVertices.Count * mdctEdges.Count * mdctEdges.Count * mdctSinkVertices.Count 'lngCompletePathLength * mdctSourceVertices.Keys.Count
                 'TODO: thought: can this count be replaced with the edge count (as each edge lies
                 'by def on a path from a source to a sink, and thus must be hit in the search exactly once,
-                'i think...)
+                'i think...) LOOK THIS UP: Upper bound on number of paths from source to sink as function of #v, #e
             Else
                 lngCompleteSearchLevelCount = -1
             End If
@@ -549,16 +668,6 @@ Namespace DirectedGraph
                             'Something very strange has happened
                             Throw New Exception("Not at sink, yet no outgoing edges exist!")
                         End If
-
-                        'Increment search level count, report progress if nessecary
-                        lngCurrentSearchLevel += 1
-                        If lngCurrentSearchLevel Mod MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS = 0 Then
-                            If lngCompleteSearchLevelCount <> -1 Then
-                                RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, lngCompleteSearchLevelCount)
-                            Else
-                                RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, Nothing)
-                            End If
-                        End If
                     Loop
 
                     'Add the current path to the 
@@ -566,6 +675,16 @@ Namespace DirectedGraph
                     'so remove it from the working paths list
                     lstCompletePaths.Add(lstCurrentPath)
                     lstWorkingPaths.RemoveAt(0)
+
+                    'Increment search level count, report progress if nessecary
+                    lngCurrentSearchLevel += 1
+                    If lngCurrentSearchLevel Mod MINT_FREQUENCY_OF_OPERATION_PROGRESS_STATUS_NOTIFICATIONS = 0 Then
+                        If lngCompleteSearchLevelCount <> -1 Then
+                            RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, lngCompleteSearchLevelCount)
+                        Else
+                            RaiseEvent OperationProgressChanged(clsDirectedGraph(Of GraphVertexPayload, GraphEdgePayload).enuOperationType.FindAllNonLoopingSourceSinkPaths, lngCurrentSearchLevel, Nothing)
+                        End If
+                    End If
                 Loop
             Next
 
